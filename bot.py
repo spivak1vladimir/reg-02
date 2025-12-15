@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN = "PASTE_YOUR_TOKEN_HERE"
+TOKEN = "8553029498:AAFPIjBNIPQjjlfbLUk6xdWw7xThkLUUDsU"
 ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 8
 DATA_FILE = "registered_users.json"
