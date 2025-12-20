@@ -37,6 +37,27 @@ REMINDER_TEXT = (
     "Игра в сквош состоится завтра в 21:00.\n"
     "Адрес: ул. Лужники, 24, стр. 21, этаж 4."
 )
+START_TEXT = (
+    "Играем на площадке:\n"
+    "Сквош Москва\n"
+    "ул. Лужники, 24, стр. 21, Москва\n"
+    "этаж 4\n\n"
+    "23 декабря\n"
+    "Сбор: 20:30\n"
+    "Начало игры: 21:00\n\n"
+    "Ты присоединился к игре в Сквош Spivak Run\n\n"
+    "Пожалуйста, ознакомься с условиями участия:\n"
+    "— Участник самостоятельно несёт ответственность за свою жизнь и здоровье.\n"
+    "— Участник несёт ответственность за сохранность личных вещей.\n"
+    "— Согласие на обработку персональных данных.\n"
+    "— Согласие на фото- и видеосъёмку во время мероприятия.\n\n"
+    "Условия оплаты и отмены участия:\n"
+    "— При отмене участия менее чем за 24 часа до начала игры оплата не возвращается.\n"
+    "— При отмене не позднее чем за 24 часа до игры средства возвращаются.\n"
+    "— Допускается передача оплаченного места другому игроку при самостоятельном поиске замены.\n"
+    "— Допускается передача оплаченного места другому игроку при самостоятельном поиске замены.\n\n"
+    "Если согласен с условиями — нажми кнопку ниже."
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -57,10 +78,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("Принимаю, играю", callback_data="register"),
         InlineKeyboardButton("Отменить", callback_data="cancel")
     ]]
+
     await update.message.reply_text(
-        "Регистрация на игру в сквош 23 декабря.",
+        START_TEXT,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -90,10 +113,24 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="Ты в листе ожидания. Я напишу, если появится место."
         )
 
-    await context.bot.send_message(
-        chat_id=ADMIN_CHAT_ID,
-        text=f"Новый игрок {user_id}, статус: {'основной' if is_main else 'ожидание'}"
-    )
+    user = query.from_user
+username = f"@{user.username}" if user.username else "—"
+
+admin_text = (
+    "Новый игрок!\n\n"
+    f"Имя: {user.first_name}\n"
+    f"Username: {username}\n"
+    f"ID: {user.id}\n"
+    f"Статус: {'Основной состав' if is_main else 'Лист ожидания'}\n"
+    f"Позиция: {position}\n\n"
+    f"Всего игроков: {len(registered_users)}\n"
+    f"Основной состав: {min(len(registered_users), MAX_SLOTS)} / {MAX_SLOTS}"
+)
+
+await context.bot.send_message(
+    chat_id=ADMIN_CHAT_ID,
+    text=admin_text
+)
 
     await query.edit_message_text("Регистрация принята.")
 
