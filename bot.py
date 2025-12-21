@@ -37,6 +37,7 @@ REMINDER_TEXT = (
     "Игра в сквош состоится завтра в 21:00.\n"
     "Адрес: ул. Лужники, 24, стр. 21, этаж 4."
 )
+
 START_TEXT = (
     "Играем на площадке:\n"
     "Сквош Москва\n"
@@ -54,12 +55,12 @@ START_TEXT = (
     "Условия оплаты и отмены участия:\n"
     "— При отмене участия менее чем за 24 часа до начала игры оплата не возвращается.\n"
     "— При отмене не позднее чем за 24 часа до игры средства возвращаются.\n"
-    "— Допускается передача оплаченного места другому игроку при самостоятельном поиске замены.\n"
     "— Допускается передача оплаченного места другому игроку при самостоятельном поиске замены.\n\n"
     "Если согласен с условиями — нажми кнопку ниже."
 )
 
 logging.basicConfig(level=logging.INFO)
+
 
 def load_users():
     if os.path.exists(DATA_FILE):
@@ -67,11 +68,14 @@ def load_users():
             return json.load(f)
     return []
 
+
 def save_users(users):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, ensure_ascii=False)
 
+
 registered_users = load_users()
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[
@@ -89,6 +93,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    user = query.from_user
 
     if user_id in registered_users:
         await query.edit_message_text("Ты уже зарегистрирован.")
@@ -99,7 +104,22 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     position = len(registered_users)
     is_main = position <= MAX_SLOTS
+    username = f"@{user.username}" if user.username else "—"
 
+    # Сообщение админу
+    admin_text = (
+        "Новый игрок!\n\n"
+        f"Имя: {user.first_name}\n"
+        f"Username: {username}\n"
+        f"ID: {user.id}\n"
+        f"Статус: {'Основной состав' if is_main else 'Лист ожидания'}\n"
+        f"Позиция: {position}\n\n"
+        f"Всего игроков: {len(registered_users)}\n"
+        f"Основной состав: {min(len(registered_users), MAX_SLOTS)} / {MAX_SLOTS}"
+    )
+    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
+
+    # Сообщение пользователю
     if is_main:
         keyboard = [[InlineKeyboardButton("Я оплатил", callback_data="paid")]]
         await context.bot.send_message(
@@ -113,26 +133,8 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="Ты в листе ожидания. Я напишу, если появится место."
         )
 
-    user = query.from_user
-username = f"@{user.username}" if user.username else "—"
-
-admin_text = (
-    "Новый игрок!\n\n"
-    f"Имя: {user.first_name}\n"
-    f"Username: {username}\n"
-    f"ID: {user.id}\n"
-    f"Статус: {'Основной состав' if is_main else 'Лист ожидания'}\n"
-    f"Позиция: {position}\n\n"
-    f"Всего игроков: {len(registered_users)}\n"
-    f"Основной состав: {min(len(registered_users), MAX_SLOTS)} / {MAX_SLOTS}"
-)
-
-await context.bot.send_message(
-    chat_id=ADMIN_CHAT_ID,
-    text=admin_text
-)
-
     await query.edit_message_text("Регистрация принята.")
+
 
 async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -146,6 +148,7 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("Спасибо. Оплата отмечена.")
 
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -158,6 +161,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     registered_users.remove(user_id)
     save_users(registered_users)
 
+    # Продвигаем из листа ожидания
     if len(registered_users) >= MAX_SLOTS:
         new_main_id = registered_users[MAX_SLOTS - 1]
         keyboard = [[InlineKeyboardButton("Я оплатил", callback_data="paid")]]
@@ -169,6 +173,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("Ты отменил участие.")
 
+
 async def reminder_job(context: ContextTypes.DEFAULT_TYPE):
     for user_id in registered_users[:MAX_SLOTS]:
         try:
@@ -176,18 +181,22 @@ async def reminder_job(context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+
 def main():
     app = Application.builder().token(TOKEN).build()
 
+    # Напоминание за 24 часа (JobQueue)
     reminder_time = GAME_DATETIME - timedelta(hours=24)
     app.job_queue.run_once(reminder_job, reminder_time)
 
+    # Хэндлеры
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(register, pattern="register"))
     app.add_handler(CallbackQueryHandler(cancel, pattern="cancel"))
     app.add_handler(CallbackQueryHandler(paid, pattern="paid"))
 
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
