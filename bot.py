@@ -59,6 +59,27 @@ START_TEXT = (
     "Если согласен с условиями — нажми кнопку ниже."
 )
 
+INFO_TEXT = (
+    "Игра в сквош — Spivak Run\n\n"
+    "23 декабря\n"
+    "Сбор: 20:30\n"
+    "Начало игры: 21:00\n\n"
+    "Адрес:\n"
+    "Сквош Москва\n"
+    "ул. Лужники, 24, стр. 21, Москва\n"
+    "этаж 4\n"
+    "https://yandex.ru/maps/-/CLDvEIoP\n\n"
+    "Условия участия:\n"
+    "— Участник самостоятельно несёт ответственность за свою жизнь и здоровье.\n"
+    "— Участник несёт ответственность за сохранность личных вещей.\n"
+    "— Согласие на обработку персональных данных.\n"
+    "— Согласие на фото- и видеосъёмку во время мероприятия.\n\n"
+    "Условия оплаты и отмены участия:\n"
+    "— При отмене менее чем за 24 часа до начала игры оплата не возвращается.\n"
+    "— При отмене не позднее чем за 24 часа до игры средства возвращаются.\n"
+    "— Допускается передача оплаченного места другому игроку."
+)
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -89,6 +110,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(INFO_TEXT)
+
+
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -106,7 +131,6 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_main = position <= MAX_SLOTS
     username = f"@{user.username}" if user.username else "—"
 
-    # Сообщение админу
     admin_text = (
         "Новый игрок!\n\n"
         f"Имя: {user.first_name}\n"
@@ -119,7 +143,6 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
 
-    # Сообщение пользователю
     if is_main:
         keyboard = [[InlineKeyboardButton("Я оплатил", callback_data="paid")]]
         await context.bot.send_message(
@@ -146,7 +169,18 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=f"Игрок {user.first_name} (ID {user.id}) нажал 'Я оплатил'. Проверь чек."
     )
 
-    await query.edit_message_text("Спасибо. Оплата отмечена.")
+    keyboard = [[InlineKeyboardButton("Правила и карта", callback_data="info")]]
+    await query.edit_message_text(
+        "Спасибо. Оплата отмечена.\n\n"
+        "Правила и адрес можно посмотреть в любой момент.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text(INFO_TEXT)
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -161,7 +195,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     registered_users.remove(user_id)
     save_users(registered_users)
 
-    # Продвигаем из листа ожидания
     if len(registered_users) >= MAX_SLOTS:
         new_main_id = registered_users[MAX_SLOTS - 1]
         keyboard = [[InlineKeyboardButton("Я оплатил", callback_data="paid")]]
@@ -185,15 +218,16 @@ async def reminder_job(context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # Напоминание за 24 часа (JobQueue)
     reminder_time = GAME_DATETIME - timedelta(hours=24)
     app.job_queue.run_once(reminder_job, reminder_time)
 
-    # Хэндлеры
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("info", info))
+
     app.add_handler(CallbackQueryHandler(register, pattern="register"))
     app.add_handler(CallbackQueryHandler(cancel, pattern="cancel"))
     app.add_handler(CallbackQueryHandler(paid, pattern="paid"))
+    app.add_handler(CallbackQueryHandler(info_callback, pattern="info"))
 
     app.run_polling()
 
