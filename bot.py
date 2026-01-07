@@ -324,8 +324,17 @@ async def main():
     app.add_handler(CallbackQueryHandler(admin_confirm_payment, pattern="pay_"))
     app.add_handler(CallbackQueryHandler(admin_arrived, pattern="arr_"))
 
-    await app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()  # безопасный способ без asyncio.run()
+    await app.idle()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        # Если event loop уже запущен (например, в Replit / Jupyter)
+        import nest_asyncio
+        nest_asyncio.apply()
+        asyncio.get_event_loop().create_task(main())
