@@ -303,7 +303,7 @@ async def reminder_4h(context: ContextTypes.DEFAULT_TYPE):
     for u in registered_users:
         await context.bot.send_message(chat_id=u["id"], text=REMINDER_4H)
 
-
+# ====== Запуск ======
 async def main():
     await load_users()
     app = Application.builder().token(TOKEN).build()
@@ -324,17 +324,8 @@ async def main():
     app.add_handler(CallbackQueryHandler(admin_confirm_payment, pattern="pay_"))
     app.add_handler(CallbackQueryHandler(admin_arrived, pattern="arr_"))
 
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()  # безопасный способ без asyncio.run()
-    await app.idle()
+    await app.run_polling()
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        # Если event loop уже запущен (например, в Replit / Jupyter)
-        import nest_asyncio
-        nest_asyncio.apply()
-        asyncio.get_event_loop().create_task(main())
+    asyncio.get_event_loop().run_until_complete(main())
