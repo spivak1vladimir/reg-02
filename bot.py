@@ -3,6 +3,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
@@ -45,8 +46,7 @@ START_TEXT = (
     "Сбор: 20:30\n"
     "Начало игры: 21:00\n\n"
     "Ты присоединился к игре в Сквош Spivak Run\n\n"
-    + TERMS_TEXT +
-    "Если согласен с условиями — нажми кнопку ниже."
+    + TERMS_TEXT
 )
 
 BASE_INFO_TEXT = (
@@ -93,7 +93,7 @@ async def save_users():
             registered_users,
             open(DATA_FILE, "w", encoding="utf-8"),
             ensure_ascii=False,
-            indent=2
+            indent=2,
         )
     )
 
@@ -103,12 +103,18 @@ def build_participants_text():
     if not registered_users:
         return "Участников пока нет."
 
-    lines = ["Участники:"]
+    lines = ["Участники:\n"]
     for i, u in enumerate(registered_users, 1):
         status = "Основной состав" if i <= MAX_SLOTS else "Лист ожидания"
-        paid = "Оплата подтверждена" if u.get("paid") else "Не оплачено"
-        arrived = "Пришёл" if u.get("arrived") else "—"
-        lines.append(f"{i}. {u['first_name']} — {status} — {paid} — {arrived}")
+        paid = "подтверждена" if u.get("paid") else "не оплачено"
+        arrived = "Пришёл" if u.get("arrived") else "Не пришёл"
+
+        lines.append(
+            f"{i}. {u['first_name']} — {status}\n"
+            f"   Оплата: {paid}\n"
+            f"   Статус: {arrived}\n"
+        )
+
     return "\n".join(lines)
 
 
@@ -117,10 +123,12 @@ def build_info_text():
 
 
 def participant_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Информация по игре", callback_data="info")],
-        [InlineKeyboardButton("Отменить участие", callback_data="cancel")]
-    ])
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Информация по игре", callback_data="info")],
+            [InlineKeyboardButton("Отменить участие", callback_data="cancel")],
+        ]
+    )
 
 # ================== REMINDERS ==================
 
@@ -138,11 +146,13 @@ async def reminder_4h(context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Принимаю, играю", callback_data="register")],
-        [InlineKeyboardButton("Информация по игре", callback_data="info")]
+        [InlineKeyboardButton("Информация по игре", callback_data="info")],
     ]
+
+    await update.message.reply_text(START_TEXT)
     await update.message.reply_text(
-        START_TEXT,
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        "Если согласен с условиями — нажми кнопку ниже.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
@@ -161,26 +171,28 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("Ты уже зарегистрирован.")
             return
 
-        registered_users.append({
-            "id": user.id,
-            "first_name": user.first_name,
-            "username": user.username,
-            "paid": False,
-            "arrived": False
-        })
+        registered_users.append(
+            {
+                "id": user.id,
+                "first_name": user.first_name,
+                "username": user.username,
+                "paid": False,
+                "arrived": False,
+            }
+        )
         await save_users()
 
         is_main = len(registered_users) <= MAX_SLOTS
 
     await context.bot.send_message(
         ADMIN_CHAT_ID,
-        f"Новый участник: {user.first_name}"
+        f"Новый участник: {user.first_name}",
     )
 
     await context.bot.send_message(
         user.id,
         "Ты зарегистрирован.",
-        reply_markup=participant_keyboard()
+        reply_markup=participant_keyboard(),
     )
 
     if is_main:
@@ -189,7 +201,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             PAYMENT_TEXT,
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("Я оплатил", callback_data="paid")]]
-            )
+            ),
         )
 
     await query.edit_message_text("Регистрация принята.")
@@ -199,7 +211,7 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     await context.bot.send_message(
         ADMIN_CHAT_ID,
-        f"Игрок {update.callback_query.from_user.first_name} нажал «Я оплатил»"
+        f"Игрок {update.callback_query.from_user.first_name} нажал кнопку «Я оплатил».",
     )
     await update.callback_query.edit_message_text(
         "Ожидается подтверждение оплаты администратором."
@@ -221,7 +233,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("Ты не зарегистрирован.")
             return
 
-    await context.bot.send_message(ADMIN_CHAT_ID, "Участник отменил участие.")
+    await context.bot.send_message(
+        ADMIN_CHAT_ID,
+        "Участник отменил участие.",
+    )
     await query.edit_message_text("Ты отменил участие.")
 
 # ================== ADMIN ==================
@@ -234,27 +249,29 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for i, u in enumerate(registered_users):
         row = [
-            InlineKeyboardButton(f"Удалить {u['first_name']}", callback_data=f"del_{i}")
+            InlineKeyboardButton(
+                f"Удалить {u['first_name']}", callback_data=f"del_{i}"
+            )
         ]
         if not u.get("paid"):
             row.append(
                 InlineKeyboardButton(
                     f"Подтвердить оплату {u['first_name']}",
-                    callback_data=f"pay_{i}"
+                    callback_data=f"pay_{i}",
                 )
             )
         if u.get("paid") and not u.get("arrived"):
             row.append(
                 InlineKeyboardButton(
                     f"Пришёл {u['first_name']}",
-                    callback_data=f"arr_{i}"
+                    callback_data=f"arr_{i}",
                 )
             )
         keyboard.append(row)
 
     await update.message.reply_text(
         build_participants_text(),
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
@@ -267,7 +284,7 @@ async def admin_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         ADMIN_CHAT_ID,
-        f"Удалён участник {removed['first_name']}"
+        f"Удалён участник {removed['first_name']}.",
     )
     await update.callback_query.edit_message_text("Участник удалён.")
 
@@ -281,7 +298,7 @@ async def admin_confirm_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     await context.bot.send_message(
         registered_users[idx]["id"],
-        "Оплата подтверждена администратором."
+        "Оплата подтверждена администратором.",
     )
     await update.callback_query.edit_message_text("Оплата подтверждена.")
 
@@ -307,7 +324,15 @@ async def post_init(app: Application):
 # ================== MAIN ==================
 
 def main():
-    app = Application.builder().token(TOKEN).post_init(post_init).build()
+    app = (
+        Application.builder()
+        .token(TOKEN)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .write_timeout(30)
+        .post_init(post_init)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
