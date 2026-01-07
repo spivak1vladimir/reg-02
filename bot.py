@@ -12,8 +12,6 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ================== CONFIG ==================
-
 TOKEN = "8553029498:AAFdohgB-RkT9-XZoz94PzS65BvYGri7Sa0"
 ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 8
@@ -22,8 +20,6 @@ DATA_FILE = "registered_users.json"
 GAME_DATETIME = datetime(2026, 1, 9, 21, 0, tzinfo=timezone.utc)
 
 logging.basicConfig(level=logging.INFO)
-
-# ================== TEXTS ==================
 
 TERMS_TEXT = (
     "Пожалуйста, ознакомься с условиями участия:\n"
@@ -46,7 +42,8 @@ START_TEXT = (
     "Сбор: 20:30\n"
     "Начало игры: 21:00\n\n"
     "Ты присоединился к игре в Сквош Spivak Run\n\n"
-    + TERMS_TEXT
+    + TERMS_TEXT +
+    "Если согласен с условиями — нажми кнопку ниже."
 )
 
 BASE_INFO_TEXT = (
@@ -73,49 +70,41 @@ PAYMENT_TEXT = (
 REMINDER_24H = "Напоминание\nИгра в сквош состоится завтра в 21:00."
 REMINDER_4H = "Напоминание\nИгра в сквош начнётся через 4 часа."
 
-# ================== STORAGE ==================
+registered_users = []
 
-users_lock = asyncio.Lock()
-registered_users: list[dict] = []
+
+def load_users_sync():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def save_users_sync(users):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
 
 
 async def load_users():
-    if not os.path.exists(DATA_FILE):
-        return []
-    return await asyncio.to_thread(
-        lambda: json.load(open(DATA_FILE, "r", encoding="utf-8"))
-    )
+    global registered_users
+    registered_users = await asyncio.to_thread(load_users_sync)
 
 
 async def save_users():
-    await asyncio.to_thread(
-        lambda: json.dump(
-            registered_users,
-            open(DATA_FILE, "w", encoding="utf-8"),
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
+    await asyncio.to_thread(save_users_sync, registered_users)
 
-# ================== HELPERS ==================
 
 def build_participants_text():
     if not registered_users:
         return "Участников пока нет."
 
-    lines = ["Участники:\n"]
+    text = "Участники:\n"
     for i, u in enumerate(registered_users, 1):
         status = "Основной состав" if i <= MAX_SLOTS else "Лист ожидания"
-        paid = "подтверждена" if u.get("paid") else "не оплачено"
+        paid = "Оплата подтверждена" if u.get("paid") else "Не оплачено"
         arrived = "Пришёл" if u.get("arrived") else "Не пришёл"
-
-        lines.append(
-            f"{i}. {u['first_name']} — {status}\n"
-            f"   Оплата: {paid}\n"
-            f"   Статус: {arrived}\n"
-        )
-
-    return "\n".join(lines)
+        text += f"{i}. {u['first_name']} — {status} — {paid} — {arrived}\n"
+    return text
 
 
 def build_info_text():
@@ -123,123 +112,116 @@ def build_info_text():
 
 
 def participant_keyboard():
-    return InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("Информация по игре", callback_data="info")],
-            [InlineKeyboardButton("Отменить участие", callback_data="cancel")],
-        ]
-    )
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Информация по игре", callback_data="info")],
+        [InlineKeyboardButton("Отменить участие", callback_data="cancel")]
+    ])
 
-# ================== REMINDERS ==================
-
-async def reminder_24h(context: ContextTypes.DEFAULT_TYPE):
-    for u in registered_users:
-        await context.bot.send_message(u["id"], REMINDER_24H)
-
-
-async def reminder_4h(context: ContextTypes.DEFAULT_TYPE):
-    for u in registered_users:
-        await context.bot.send_message(u["id"], REMINDER_4H)
-
-# ================== USER HANDLERS ==================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Принимаю, играю", callback_data="register")],
-        [InlineKeyboardButton("Информация по игре", callback_data="info")],
+        [InlineKeyboardButton("Информация по игре", callback_data="info")]
     ]
-
-    await update.message.reply_text(START_TEXT)
     await update.message.reply_text(
-        "Если согласен с условиями — нажми кнопку ниже.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        START_TEXT,
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
 async def info_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    await update.callback_query.message.reply_text(build_info_text())
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text(build_info_text())
 
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     user = query.from_user
 
-    async with users_lock:
-        if any(u["id"] == user.id for u in registered_users):
-            await query.edit_message_text("Ты уже зарегистрирован.")
-            return
+    if any(u["id"] == user.id for u in registered_users):
+        await query.edit_message_text("Ты уже зарегистрирован.")
+        return
 
-        registered_users.append(
-            {
-                "id": user.id,
-                "first_name": user.first_name,
-                "username": user.username,
-                "paid": False,
-                "arrived": False,
-            }
-        )
-        await save_users()
+    user_data = {
+        "id": user.id,
+        "first_name": user.first_name,
+        "username": user.username,
+        "paid": False,
+        "arrived": False,
+    }
+    registered_users.append(user_data)
+    await save_users()
 
-        is_main = len(registered_users) <= MAX_SLOTS
-
-    await context.bot.send_message(
-        ADMIN_CHAT_ID,
-        f"Новый участник: {user.first_name}",
-    )
+    position = len(registered_users)
+    is_main = position <= MAX_SLOTS
 
     await context.bot.send_message(
-        user.id,
-        "Ты зарегистрирован.",
-        reply_markup=participant_keyboard(),
+        chat_id=user.id,
+        text="Ты зарегистрирован.",
+        reply_markup=participant_keyboard()
     )
 
     if is_main:
         await context.bot.send_message(
-            user.id,
-            PAYMENT_TEXT,
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("Я оплатил", callback_data="paid")]]
-            ),
+            chat_id=user.id,
+            text=PAYMENT_TEXT,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("Я оплатил", callback_data="paid")]
+            ])
         )
 
     await query.edit_message_text("Регистрация принята.")
 
 
 async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
+    query = update.callback_query
+    await query.answer()
+
+    user = query.from_user
     await context.bot.send_message(
-        ADMIN_CHAT_ID,
-        f"Игрок {update.callback_query.from_user.first_name} нажал кнопку «Я оплатил».",
+        chat_id=ADMIN_CHAT_ID,
+        text=f"Игрок {user.first_name} нажал кнопку «Я оплатил»."
     )
-    await update.callback_query.edit_message_text(
-        "Ожидается подтверждение оплаты администратором."
-    )
+
+    await query.edit_message_text("Ожидается подтверждение оплаты администратором.")
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    uid = query.from_user.id
 
-    async with users_lock:
-        for i, u in enumerate(registered_users):
-            if u["id"] == uid:
-                registered_users.pop(i)
-                await save_users()
-                break
-        else:
-            await query.edit_message_text("Ты не зарегистрирован.")
-            return
+    user = query.from_user
+    user_data = next((u for u in registered_users if u["id"] == user.id), None)
+    if not user_data:
+        await query.edit_message_text("Ты не зарегистрирован.")
+        return
 
-    await context.bot.send_message(
-        ADMIN_CHAT_ID,
-        "Участник отменил участие.",
-    )
+    registered_users.remove(user_data)
+    await save_users()
+
+    await promote_from_waiting_list(context)
     await query.edit_message_text("Ты отменил участие.")
 
-# ================== ADMIN ==================
+
+async def promote_from_waiting_list(context):
+    if len(registered_users) < MAX_SLOTS:
+        return
+
+    u = registered_users[MAX_SLOTS - 1]
+    if u.get("paid"):
+        return
+
+    await context.bot.send_message(
+        chat_id=u["id"],
+        text="Для тебя освободилось место в основном составе.\n\n" + PAYMENT_TEXT,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Я оплатил", callback_data="paid")]
+        ])
+    )
+
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
@@ -249,105 +231,106 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for i, u in enumerate(registered_users):
         row = [
-            InlineKeyboardButton(
-                f"Удалить {u['first_name']}", callback_data=f"del_{i}"
-            )
+            InlineKeyboardButton(f"Удалить {u['first_name']}", callback_data=f"del_{i}")
         ]
         if not u.get("paid"):
             row.append(
                 InlineKeyboardButton(
                     f"Подтвердить оплату {u['first_name']}",
-                    callback_data=f"pay_{i}",
+                    callback_data=f"pay_{i}"
                 )
             )
-        if u.get("paid") and not u.get("arrived"):
+        if not u.get("arrived"):
             row.append(
                 InlineKeyboardButton(
                     f"Пришёл {u['first_name']}",
-                    callback_data=f"arr_{i}",
+                    callback_data=f"arr_{i}"
                 )
             )
         keyboard.append(row)
 
     await update.message.reply_text(
         build_participants_text(),
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
 async def admin_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    idx = int(update.callback_query.data.split("_")[1])
+    query = update.callback_query
+    await query.answer()
 
-    removed = registered_users.pop(idx)
+    idx = int(query.data.split("_")[1])
+    registered_users.pop(idx)
     await save_users()
 
-    await context.bot.send_message(
-        ADMIN_CHAT_ID,
-        f"Удалён участник {removed['first_name']}.",
-    )
-    await update.callback_query.edit_message_text("Участник удалён.")
+    await promote_from_waiting_list(context)
+    await query.edit_message_text("Участник удалён.")
 
 
 async def admin_confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    idx = int(update.callback_query.data.split("_")[1])
+    query = update.callback_query
+    await query.answer()
 
+    idx = int(query.data.split("_")[1])
     registered_users[idx]["paid"] = True
     await save_users()
 
     await context.bot.send_message(
-        registered_users[idx]["id"],
-        "Оплата подтверждена администратором.",
+        chat_id=registered_users[idx]["id"],
+        text="Оплата подтверждена администратором."
     )
-    await update.callback_query.edit_message_text("Оплата подтверждена.")
+
+    await query.edit_message_text("Оплата подтверждена.")
 
 
 async def admin_arrived(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    idx = int(update.callback_query.data.split("_")[1])
+    query = update.callback_query
+    await query.answer()
 
+    idx = int(query.data.split("_")[1])
     registered_users[idx]["arrived"] = True
     await save_users()
 
-    await update.callback_query.edit_message_text("Отмечен как пришёл.")
+    await query.edit_message_text("Отмечен как пришёл.")
 
-# ================== INIT ==================
 
-async def post_init(app: Application):
-    global registered_users
-    registered_users = await load_users()
+async def reminder_24h(context: ContextTypes.DEFAULT_TYPE):
+    for u in registered_users:
+        await context.bot.send_message(chat_id=u["id"], text=REMINDER_24H)
+
+
+async def reminder_4h(context: ContextTypes.DEFAULT_TYPE):
+    for u in registered_users:
+        await context.bot.send_message(chat_id=u["id"], text=REMINDER_4H)
+
+
+async def error_handler(update, context):
+    pass
+
+
+def main():
+    app = Application.builder().token(TOKEN).build()
+
+    app.add_error_handler(error_handler)
 
     app.job_queue.run_once(reminder_24h, GAME_DATETIME - timedelta(hours=24))
     app.job_queue.run_once(reminder_4h, GAME_DATETIME - timedelta(hours=4))
 
-# ================== MAIN ==================
-
-def main():
-    app = (
-        Application.builder()
-        .token(TOKEN)
-        .connect_timeout(30)
-        .read_timeout(30)
-        .write_timeout(30)
-        .post_init(post_init)
-        .build()
-    )
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
 
-    app.add_handler(CallbackQueryHandler(register, pattern="register"))
-    app.add_handler(CallbackQueryHandler(info_cb, pattern="info"))
-    app.add_handler(CallbackQueryHandler(cancel, pattern="cancel"))
-    app.add_handler(CallbackQueryHandler(paid, pattern="paid"))
+    app.add_handler(CallbackQueryHandler(register, pattern="^register$"))
+    app.add_handler(CallbackQueryHandler(info_cb, pattern="^info$"))
+    app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
+    app.add_handler(CallbackQueryHandler(paid, pattern="^paid$"))
 
-    app.add_handler(CallbackQueryHandler(admin_delete, pattern="del_"))
-    app.add_handler(CallbackQueryHandler(admin_confirm_payment, pattern="pay_"))
-    app.add_handler(CallbackQueryHandler(admin_arrived, pattern="arr_"))
+    app.add_handler(CallbackQueryHandler(admin_delete, pattern="^del_"))
+    app.add_handler(CallbackQueryHandler(admin_confirm_payment, pattern="^pay_"))
+    app.add_handler(CallbackQueryHandler(admin_arrived, pattern="^arr_"))
 
     app.run_polling()
 
 
 if __name__ == "__main__":
+    asyncio.run(load_users())
     main()
