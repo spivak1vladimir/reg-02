@@ -308,29 +308,25 @@ async def error_handler(update, context):
     pass
 
 
-def main():
+import asyncio
+
+async def main():
     app = Application.builder().token(TOKEN).build()
 
-    app.add_error_handler(error_handler)
-
     app.job_queue.run_once(reminder_24h, GAME_DATETIME - timedelta(hours=24))
-    app.job_queue.run_once(reminder_4h, GAME_DATETIME - timedelta(hours=4))
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
 
-    app.add_handler(CallbackQueryHandler(register, pattern="^register$"))
-    app.add_handler(CallbackQueryHandler(info_cb, pattern="^info$"))
-    app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
-    app.add_handler(CallbackQueryHandler(paid, pattern="^paid$"))
+    app.add_handler(CallbackQueryHandler(register, pattern="register"))
+    app.add_handler(CallbackQueryHandler(paid, pattern="paid"))
+    app.add_handler(CallbackQueryHandler(arrived, pattern="arrived"))
+    app.add_handler(CallbackQueryHandler(cancel, pattern="cancel"))
+    app.add_handler(CallbackQueryHandler(info_game, pattern="info_game"))
+    app.add_handler(CallbackQueryHandler(admin_remove, pattern="admin_remove"))
+    app.add_handler(CallbackQueryHandler(remove_user, pattern="remove_"))
 
-    app.add_handler(CallbackQueryHandler(admin_delete, pattern="^del_"))
-    app.add_handler(CallbackQueryHandler(admin_confirm_payment, pattern="^pay_"))
-    app.add_handler(CallbackQueryHandler(admin_arrived, pattern="^arr_"))
-
-    app.run_polling()
-
+    await app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(load_users())
-    main()
+    asyncio.run(main())
