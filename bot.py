@@ -10,7 +10,7 @@ ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 8
 DATA_FILE = "registered_users.json"
 
-GAME_DATETIME = datetime(2026, 1, 6, 21, 0, tzinfo=timezone.utc)
+GAME_DATETIME = datetime(2026, 1, 9, 21, 0, tzinfo=timezone.utc)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,7 +31,7 @@ START_TEXT = (
     "Сквош Москва\n"
     "ул. Лужники, 24, стр. 21, Москва\n"
     "этаж 4\n\n"
-    "06 Января 2026\n"
+    "09 Января 2026\n"
     "Сбор: 20:30\n"
     "Начало игры: 21:00\n\n"
     "Ты присоединился к игре в Сквош Spivak Run\n\n"
@@ -41,7 +41,7 @@ START_TEXT = (
 
 BASE_INFO_TEXT = (
     "Игра в сквош — Spivak Run\n\n"
-    "06 Января 2026\n"
+    "09 Января 2026\n"
     "Сбор: 20:30\n"
     "Начало игры: 21:00\n\n"
     "Адрес:\n"
@@ -61,7 +61,7 @@ PAYMENT_TEXT = (
 )
 
 REMINDER_24H = "Напоминание\nИгра в сквош состоится завтра в 21:00."
-REMINDER_2H = "Напоминание\nИгра в сквош начнётся через 2 часа."
+REMINDER_4H = "Напоминание\nИгра в сквош скоро начнётся."
 
 def load_users():
     if os.path.exists(DATA_FILE):
